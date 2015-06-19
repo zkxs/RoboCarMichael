@@ -16,7 +16,7 @@
 
 #include <Servo.h>
 
-/* Begin Constants */
+/* Begin Constants (all non-percentage constants are integral values) */
   // set to nonzero to enable serial debugging
   #define DEBUG 0
   
@@ -45,7 +45,7 @@
   #define LED_OFF_TIME 1000
   
   // Minimum acceptable value of VCC (input voltage) (in mV)
-  #define VCC_MINIMUM 4700
+  #define VCC_MINIMUM 4900
   
   
   /* The following constants are computed from the previous values */
@@ -112,6 +112,18 @@ void setup()
   #if DEBUG
     Serial.println("Starting...");
   #endif
+
+  // check VCC
+  long vcc = readVcc();
+  if (vcc < VCC_MINIMUM)
+  {
+    #if DEBUG
+      Serial.print("VCC was too low (");
+      Serial.print(vcc / 1000.0);
+      Serial.println("V) Aborting.");
+    #endif
+    die();
+  }
   
   // set up servos
   leftServo.attach(leftServoPin);
@@ -279,6 +291,38 @@ void loop()
   delay(LOOP_DELAY);
 } // end loop()
 
+
+/**
+ * 
+ */
+void die()
+{
+  while(true)
+  {
+    if (ledTripCount-- == 0)
+    {
+      ledState = !ledState;
+      
+      // reset trip count
+      if (ledState)
+      {
+        ledTripCount = LED_BEAT_TRIP_COUNT;
+      }
+      else if (ledBeat) // if the next delay is between beats
+      {
+        ledTripCount = LED_TRIP_COUNT_FAST_BEAT;
+        ledBeat = !ledBeat;
+      }
+      else
+      {
+        ledTripCount = LED_TRIP_COUNT_FAST;
+        ledBeat = !ledBeat;
+      }
+      digitalWrite(ledPin, ledState);
+    }
+    delay(LOOP_DELAY);
+  }
+}
 
 /**
  * Read the value of VCC (the power source). This has a pretty bad tolerance,
