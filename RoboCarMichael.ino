@@ -36,7 +36,7 @@
   #define JITTER_PERCENT 0.05
   
   // how long to pause at the end of each loop (in ms)
-  #define LOOP_DELAY 50
+  #define LOOP_DELAY 25
   
   // How long to keep the LED on. Must not be less than LOOP_DELAY (in ms)
   #define LED_ON_TIME 50
@@ -61,7 +61,7 @@
   #define LED_TRIP_COUNT_SLOW (int)(LED_OFF_TIME / LOOP_DELAY)
   #define LED_TRIP_COUNT_SLOW_BEAT (int)(LED_TRIP_COUNT_SLOW * 0.2)
   // how often the LED pulses quickly
-  #define LED_TRIP_COUNT_FAST (int)(LED_TRIP_COUNT_SLOW * 0.2) 
+  #define LED_TRIP_COUNT_FAST (int)(LED_TRIP_COUNT_SLOW * 0.4) 
   #define LED_TRIP_COUNT_FAST_BEAT (int)(LED_TRIP_COUNT_FAST * 0.2)
 /* End Constants */
 
