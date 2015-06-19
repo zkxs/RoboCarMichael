@@ -1,21 +1,62 @@
 /*******************************************************************************
- * Runs the line-following cars built during the TU Summer Academy
+ * Runs the line-following cars built during the TU Summer Academy. The sensors
+ * should straddle the tape line so that they are only over tape if the robot
+ * needs to self-adjust. If the potentiometer is turned all the way CCW, the
+ * servos will both stop, allowing them to be calibrated easily. While the
+ * program is looping (begins after the startup test) the LED built into the
+ * board (labeled 'L') will blink in a heartbeat. If something looks wrong, such
+ * as the potentiometer being a short or an open, the heartbeat will be much
+ * faster than normal as this causes the robot to stress out.
  * 
  * Author: Michael Ripley
  * Device: Arduino Uno R3
  * Date: 2015-06-19
- * Version: 1
+ * Version: 2.0
  ******************************************************************************/
 
 #include <Servo.h>
 
 /* Begin Constants */
-  #define DEBUG 1 // set to nonzero to enable debugging
+  // set to nonzero to enable serial debugging
+  #define DEBUG 0
   
-  #define PWM_THROTTLE 0.75 // you can change this to throttle the servos
+  // set to nonzero to enable startup test (it checks if the servos work)
+  #define STARTUP_TEST 0 
+  
+  // you can change this to throttle the servos (percentage of max speed)
+  #define PWM_THROTTLE 0.75
+  
+  // how much jitter to ignore in the potentiometer (0% tolerates no jitter)
+  #define JITTER_PERCENT 0.05 
+  
+  // how long to pause at the end of each loop (in ms)
+  #define LOOP_DELAY 50
+  
+  // How long to keep the LED on. Must not be less than LOOP_DELAY (in ms)
+  #define LED_ON_TIME 50
+  
+  // How long to keep the LED of. Must not be less than LOOP_DELAY (in ms)
+  #define LED_OFF_TIME 1000
+  
+  
+  /* The following constants are computed from the previous values */
+  
   #define PWM_STOP     90 // 0 is full reverse, 90 is stop, 180 is full forward
   #define PWM_REVERSE  PWM_STOP - (int)(90 * PWM_THROTTLE)
   #define PWM_FORWARD  PWM_STOP + (int)(90 * PWM_THROTTLE)
+  
+  #define THRESHOLD_JITTER (int)(1024 * JITTER_PERCENT)
+  #define THRESHOLD_MIN THRESHOLD_JITTER
+  #define THRESHOLD_MAX 1023 - THRESHOLD_JITTER
+
+  // how long the LED stays on
+  #define LED_BEAT_TRIP_COUNT (int)(LED_ON_TIME / LOOP_DELAY)
+   // how often the LED pulses slowly
+  #define LED_TRIP_COUNT_SLOW (int)(LED_OFF_TIME / LOOP_DELAY)
+  #define LED_TRIP_COUNT_SLOW_BEAT (int)(LED_TRIP_COUNT_SLOW * 0.2)
+  // how often the LED pulses quickly
+  #define LED_TRIP_COUNT_FAST (int)(LED_TRIP_COUNT_SLOW * 0.2) 
+  #define LED_TRIP_COUNT_FAST_BEAT (int)(LED_TRIP_COUNT_FAST * 0.2)
 /* End Constants */
 
 /* Analog Inputs*/
@@ -31,12 +72,17 @@
 /* End Digital Output*/
 
 /* Begin Variable Declarations */
-  bool ledState = false;
+  bool ledState = false; // if the LED should be on or not
+  bool ledBeat = false; // if we need to do a heartbeat next
+  bool error = false; // if we have detected an error
+  unsigned int ledTripCount = LED_TRIP_COUNT_SLOW;
   Servo leftServo;
   Servo rightServo;
 /* End Variable Declarations */
 
-
+/**
+ * One-time setup
+ */
 void setup()
 {
   #if DEBUG
@@ -46,7 +92,8 @@ void setup()
   
   // set the LED pin as a digital output
   pinMode(ledPin, OUTPUT);
-
+  digitalWrite(ledPin, ledState);
+  
   // delay for a second before doing anything to prevent current spikes
   delay(1000);
   
@@ -59,10 +106,12 @@ void setup()
   rightServo.attach(rightServoPin);
   
   // test sequence (right, stop, left, stop)
-  testServos(PWM_STOP, PWM_FORWARD);
-  testServos(PWM_STOP, PWM_STOP);
-  testServos(PWM_REVERSE, PWM_STOP);
-  testServos(PWM_STOP, PWM_STOP);
+  #if STARTUP_TEST
+    testServos(PWM_STOP, PWM_FORWARD);
+    testServos(PWM_STOP, PWM_STOP);
+    testServos(PWM_REVERSE, PWM_STOP);
+    testServos(PWM_STOP, PWM_STOP);
+  #endif
 }
 
 /**
@@ -77,14 +126,15 @@ void testServos(int leftValue, int rightValue)
   delay(1000); // block for 1 second
 }
 
-
+/**
+ * Called repeatedly during program runtime
+ */
 void loop()
 {
   // read analog inputs
   int thresholdLevel = analogRead(thresholdPin);
   int leftEyeDarkness = analogRead(leftEyePin);
   int rightEyeDarkness = analogRead(rightEyePin);
-  
   
   // debug printing
   #if DEBUG
@@ -93,8 +143,47 @@ void loop()
   #endif
   
   // flash the LED
-  digitalWrite(ledPin, ledState);
-  ledState = !ledState;
+  if (ledTripCount-- == 0)
+  {
+    ledState = !ledState;
+    
+    // reset trip count
+    if (ledState)
+    {
+      ledTripCount = LED_BEAT_TRIP_COUNT;
+    }
+    else
+    {
+      // beat faster if something looks wrong
+      if (error)
+      {
+        if (ledBeat) // if the next delay is between beats
+        {
+          ledTripCount = LED_TRIP_COUNT_FAST_BEAT;
+        }
+        else
+        {
+          ledTripCount = LED_TRIP_COUNT_FAST;
+        }
+        // reset error state
+        error = false;
+      }
+      else
+      {
+        if (ledBeat) // if the next delay is between beats
+        {
+          ledTripCount = LED_TRIP_COUNT_SLOW_BEAT;
+        }
+        else
+        {
+          ledTripCount = LED_TRIP_COUNT_SLOW;
+        }
+      }
+      ledBeat = !ledBeat;
+    }
+    
+    digitalWrite(ledPin, ledState);
+  } // end LED flashing code
   
   /* 
    * If the light sensor sees something shiny, it goes low (towards 0)
@@ -117,8 +206,13 @@ void loop()
    * want it to move forward
    */
   
+  if (thresholdLevel >= THRESHOLD_MAX || thresholdLevel <= THRESHOLD_MIN)
+  {
+    // let people know if the potentiometer is shorted or open.
+    error = true;
+  }
   
-  if (thresholdLevel >= 1018) // allow a tiny ammount of jitter from 1023
+  if (thresholdLevel >= THRESHOLD_MAX) // allow a tiny ammount of jitter from 1023
   {
     /* if the potentiometer is completely CCW, normally we'd do the action for
      * when both sensors see tape. I'd rather stop the motors so that there is
@@ -156,5 +250,5 @@ void loop()
   } // end block to handle sensors
 
   // delay between updates (in milliseconds)
-  delay(50);
+  delay(LOOP_DELAY);
 }
