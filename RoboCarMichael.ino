@@ -21,13 +21,19 @@
   #define DEBUG 0
   
   // set to nonzero to enable startup test (it checks if the servos work)
-  #define STARTUP_TEST 0 
+  #define STARTUP_TEST 1
+
+  // how long to delay on startup (in ms). This prevents current spikes.
+  #define STARTUP_DELAY 250
+
+  // how long a single servo test lasts (in ms)
+  #define TEST_DURATION 250
   
   // you can change this to throttle the servos (percentage of max speed)
   #define PWM_THROTTLE 0.75
   
   // how much jitter to ignore in the potentiometer (0% tolerates no jitter)
-  #define JITTER_PERCENT 0.05 
+  #define JITTER_PERCENT 0.05
   
   // how long to pause at the end of each loop (in ms)
   #define LOOP_DELAY 50
@@ -95,7 +101,7 @@ void setup()
   digitalWrite(ledPin, ledState);
   
   // delay for a second before doing anything to prevent current spikes
-  delay(1000);
+  delay(STARTUP_DELAY);
   
   #if DEBUG
     Serial.println("Starting...");
@@ -108,14 +114,16 @@ void setup()
   // test sequence (right, stop, left, stop)
   #if STARTUP_TEST
     testServos(PWM_STOP, PWM_FORWARD);
+    testServos(PWM_STOP, PWM_REVERSE);
     testServos(PWM_STOP, PWM_STOP);
     testServos(PWM_REVERSE, PWM_STOP);
+    testServos(PWM_FORWARD, PWM_STOP);
     testServos(PWM_STOP, PWM_STOP);
   #endif
 }
 
 /**
- * Test the servos with the supplied values for one second
+ * Test the servos with the supplied values for 0.5s
  * @param leftValue value to set the left servo to
  * @param rightValue value to set the right servo to
  */
@@ -123,7 +131,7 @@ void testServos(int leftValue, int rightValue)
 {
   leftServo.write(leftValue);
   rightServo.write(rightValue);
-  delay(1000); // block for 1 second
+  delay(TEST_DURATION); // block for 0.5 seconds
 }
 
 /**
