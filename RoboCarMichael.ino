@@ -44,6 +44,9 @@
   // How long to keep the LED of. Must not be less than LOOP_DELAY (in ms)
   #define LED_OFF_TIME 1000
   
+  // Minimum acceptable value of VCC (input voltage) (in mV)
+  #define VCC_MINIMUM 4700
+  
   
   /* The following constants are computed from the previous values */
   
@@ -65,6 +68,7 @@
   #define LED_TRIP_COUNT_FAST_BEAT (int)(LED_TRIP_COUNT_FAST * 0.2)
 /* End Constants */
 
+
 /* Analog Inputs*/
   int leftEyePin = 0;
   int rightEyePin = 1;
@@ -77,6 +81,7 @@
   int rightServoPin = 10;
 /* End Digital Output*/
 
+
 /* Begin Variable Declarations */
   bool ledState = false; // if the LED should be on or not
   bool ledBeat = false; // if we need to do a heartbeat next
@@ -85,6 +90,7 @@
   Servo leftServo;
   Servo rightServo;
 /* End Variable Declarations */
+
 
 /**
  * One-time setup
@@ -122,6 +128,7 @@ void setup()
   #endif
 }
 
+
 /**
  * Test the servos with the supplied values for 0.5s
  * @param leftValue value to set the left servo to
@@ -134,6 +141,7 @@ void testServos(int leftValue, int rightValue)
   delay(TEST_DURATION); // block for 0.5 seconds
 }
 
+
 /**
  * Called repeatedly during program runtime
  */
@@ -143,12 +151,6 @@ void loop()
   int thresholdLevel = analogRead(thresholdPin);
   int leftEyeDarkness = analogRead(leftEyePin);
   int rightEyeDarkness = analogRead(rightEyePin);
-  
-  // debug printing
-  #if DEBUG
-    Serial.print("Threshold: ");
-    Serial.println(thresholdLevel);
-  #endif
   
   // flash the LED
   if (ledTripCount-- == 0)
@@ -162,6 +164,21 @@ void loop()
     }
     else
     {
+      long vcc = readVcc();
+      if (vcc < VCC_MINIMUM)
+      {
+        error = true;
+      }
+      
+      // debug printing
+      #if DEBUG
+        double vcc_double = vcc / 1000.0;
+        Serial.print("vcc: ");
+        Serial.println(vcc_double);
+        Serial.print("Pot. Voltage: ");
+        Serial.println(thresholdLevel / 1023.0 * vcc_double);
+      #endif
+      
       // beat faster if something looks wrong
       if (error)
       {
@@ -172,9 +189,10 @@ void loop()
         else
         {
           ledTripCount = LED_TRIP_COUNT_FAST;
+          
+          // reset error state
+          error = false;
         }
-        // reset error state
-        error = false;
       }
       else
       {
@@ -259,4 +277,36 @@ void loop()
 
   // delay between updates (in milliseconds)
   delay(LOOP_DELAY);
+} // end loop()
+
+
+/**
+ * Read the value of VCC (the power source). This has a pretty bad tolerance,
+ * so don't use it for precise measurements.
+ */
+long readVcc()
+{
+  // Read 1.1V reference against AVcc
+  // set the reference to Vcc and the measurement to the internal 1.1V reference
+  #if defined(__AVR_ATmega32U4__) || defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
+    ADMUX = _BV(REFS0) | _BV(MUX4) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
+  #elif defined (__AVR_ATtiny24__) || defined(__AVR_ATtiny44__) || defined(__AVR_ATtiny84__)
+    ADMUX = _BV(MUX5) | _BV(MUX0);
+  #elif defined (__AVR_ATtiny25__) || defined(__AVR_ATtiny45__) || defined(__AVR_ATtiny85__)
+    ADMUX = _BV(MUX3) | _BV(MUX2);
+  #else
+    ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
+  #endif  
+ 
+  delay(2); // Wait for Vref to settle
+  ADCSRA |= _BV(ADSC); // Start conversion
+  while (bit_is_set(ADCSRA,ADSC)); // measuring
+ 
+  uint8_t low  = ADCL; // must read ADCL first - it then locks ADCH  
+  uint8_t high = ADCH; // unlocks both
+ 
+  long result = (high<<8) | low;
+ 
+  result = 1125300L / result; // Calculate Vcc (in mV); 1125300 = 1.1*1023*1000
+  return result; // Vcc in millivolts
 }
