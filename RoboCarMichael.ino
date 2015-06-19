@@ -10,9 +10,12 @@
 #include <Servo.h>
 
 /* Begin Constants */
-  #define PWM_STOP    90 // 0 is full reverse, 90 is stop, 180 is full forward
-  #define PWM_REVERSE PWM_STOP - 90 // maximal offset from center is 90
-  #define PWM_FORWARD PWM_STOP + 90 // an offset of 67 is 75% of the max speed
+  #define DEBUG 1 // set to nonzero to enable debugging
+  
+  #define PWM_THROTTLE 0.75 // you can change this to throttle the servos
+  #define PWM_STOP     90 // 0 is full reverse, 90 is stop, 180 is full forward
+  #define PWM_REVERSE  PWM_STOP - (int)(90 * PWM_THROTTLE)
+  #define PWM_FORWARD  PWM_STOP + (int)(90 * PWM_THROTTLE)
 /* End Constants */
 
 /* Analog Inputs*/
@@ -36,33 +39,42 @@
 
 void setup()
 {
-  // enable serial printing
-  Serial.begin(9600);
-
+  #if DEBUG
+    // enable serial printing
+    Serial.begin(9600);
+  #endif
+  
   // set the LED pin as a digital output
   pinMode(ledPin, OUTPUT);
 
   // delay for a second before doing anything to prevent current spikes
   delay(1000);
   
+  #if DEBUG
+    Serial.println("Starting...");
+  #endif
+  
   // set up servos
   leftServo.attach(leftServoPin);
   rightServo.attach(rightServoPin);
   
   // test sequence (right, stop, left, stop)
-  // syntax: testServos( leftValue, rightValue )
   testServos(PWM_STOP, PWM_FORWARD);
   testServos(PWM_STOP, PWM_STOP);
   testServos(PWM_REVERSE, PWM_STOP);
   testServos(PWM_STOP, PWM_STOP);
 }
 
-
+/**
+ * Test the servos with the supplied values for one second
+ * @param leftValue value to set the left servo to
+ * @param rightValue value to set the right servo to
+ */
 void testServos(int leftValue, int rightValue)
 {
   leftServo.write(leftValue);
   rightServo.write(rightValue);
-  delay(1000);
+  delay(1000); // block for 1 second
 }
 
 
@@ -75,11 +87,11 @@ void loop()
   
   
   // debug printing
-  Serial.print("Reverse: ");
-  Serial.println(PWM_REVERSE);
-  Serial.print("Forward: ");
-  Serial.println(PWM_FORWARD);
-
+  #if DEBUG
+    Serial.print("Threshold: ");
+    Serial.println(thresholdLevel);
+  #endif
+  
   // flash the LED
   digitalWrite(ledPin, ledState);
   ledState = !ledState;
@@ -93,24 +105,60 @@ void loop()
    * if right goes low, stop right motor
    * if left goes low, stop left motor 
    * if both high, do nothing
+//****************************************************************************80
+   * Rotating the potentiometer counterclockwise raises its value, and clockwise
+   * lowers it.  The measured bounds for the value were [0, 1023]
+   * Turning the potentiometer completely CCW (1023) will make both sensors
+   * always "see" tape.
+   * Turning the potentiometer completely CW (0) will make both sensors always
+   * "see" carpet.
+   * 
+   * The left servo is attached backwards, so it must be set to reverse if you
+   * want it to move forward
    */
   
-  if (rightEyeDarkness < thresholdLevel)
+  
+  if (thresholdLevel == 1023)
   {
-    // if right goes low (brighter light detected), stop right motor
-    rightServo.write(PWM_STOP);
-  }
-  else if (leftEyeDarkness < thresholdLevel)
-  {
-    // if left goes low (brighter light detected), stop left motor 
-    leftServo.write(PWM_STOP);
+    /* if the potentiometer is completely CCW, normally we'd do the action for
+     * when both sensors see tape. I'd rather stop the motors so that there is
+     * a way to not drive the motors and still have the Arduino on.
+     */
+     
+     leftServo.write(PWM_STOP); // inverted
+     rightServo.write(PWM_STOP);
   }
   else
-  {
-    // both are high, drive normally
-    leftServo.write(PWM_REVERSE); // the left servo is backwards!
-    rightServo.write(PWM_FORWARD);
-  }
+  { // begin block to handle sensors
+    bool rightSeesTape = rightEyeDarkness < thresholdLevel;
+    bool leftSeesTape = leftEyeDarkness < thresholdLevel;
+    
+    if (!rightSeesTape && !leftSeesTape)
+    {
+      // neither sensor sees tape, drive normally
+      leftServo.write(PWM_REVERSE); // inverted
+      rightServo.write(PWM_FORWARD);
+    }
+    else if (rightSeesTape && leftSeesTape)
+    {
+      // both servos see tape! drive forwards and hope for the best!
+      leftServo.write(PWM_REVERSE); // inverted
+      rightServo.write(PWM_FORWARD);
+    }
+    else if (rightSeesTape)
+    {
+      // right sees tape, meaning we should turn left by stopping the right motor
+      leftServo.write(PWM_REVERSE); // inverted
+      rightServo.write(PWM_STOP);
+    }
+    else // it is implied that (leftSeesTape == true)
+    {
+      // left sees tape, meaning we should turn right by stopping the left motor
+      leftServo.write(PWM_STOP);
+      rightServo.write(PWM_FORWARD);
+    }
+  } // end block to handle sensors
 
+  // delay between updates (in milliseconds)
   delay(50);
 }
