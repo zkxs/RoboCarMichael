@@ -105,7 +105,7 @@ void loop()
    * if right goes low, stop right motor
    * if left goes low, stop left motor 
    * if both high, do nothing
-//****************************************************************************80
+
    * Rotating the potentiometer counterclockwise raises its value, and clockwise
    * lowers it.  The measured bounds for the value were [0, 1023]
    * Turning the potentiometer completely CCW (1023) will make both sensors
@@ -118,11 +118,12 @@ void loop()
    */
   
   
-  if (thresholdLevel == 1023)
+  if (thresholdLevel >= 1018) // allow a tiny ammount of jitter from 1023
   {
     /* if the potentiometer is completely CCW, normally we'd do the action for
      * when both sensors see tape. I'd rather stop the motors so that there is
-     * a way to not drive the motors and still have the Arduino on.
+     * a way to not drive the motors and still have the Arduino on. This
+     * provides an easy way to stop the servos so they can be centered.
      */
      
      leftServo.write(PWM_STOP); // inverted
@@ -133,15 +134,10 @@ void loop()
     bool rightSeesTape = rightEyeDarkness < thresholdLevel;
     bool leftSeesTape = leftEyeDarkness < thresholdLevel;
     
-    if (!rightSeesTape && !leftSeesTape)
+    if (rightSeesTape == leftSeesTape)
     {
-      // neither sensor sees tape, drive normally
-      leftServo.write(PWM_REVERSE); // inverted
-      rightServo.write(PWM_FORWARD);
-    }
-    else if (rightSeesTape && leftSeesTape)
-    {
-      // both servos see tape! drive forwards and hope for the best!
+      // neither sensor sees tape, drive normally...
+      // OR both servos see tape! drive forwards and hope for the best!
       leftServo.write(PWM_REVERSE); // inverted
       rightServo.write(PWM_FORWARD);
     }
