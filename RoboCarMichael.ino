@@ -30,7 +30,7 @@
   #define TEST_DURATION 250
   
   // you can change this to throttle the servos (percentage of max speed)
-  #define PWM_THROTTLE 0.75
+  #define PWM_THROTTLE 0.35
   
   // how much jitter to ignore in the potentiometer (0% tolerates no jitter)
   #define JITTER_PERCENT 0.05
